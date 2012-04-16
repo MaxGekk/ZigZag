@@ -1,0 +1,91 @@
+/*! @file   bridge.c
+ *  @brief  шлюз UART<->ZigBee. При передаче по UART перед пакетом ZigSwarm вставляется поле с адресом назначения или источника. Модуль использует прямые вызовы приема/отправки пакетов ZigBee, поэтому конфликтует с network.c 
+ *  @author Max Gekk, Timofei Istomin
+ *  @date   июль 2007
+ *  @version 1
+ */   
+
+#define DBGLOG
+//#include    <zigzag.h>
+#include <zzComBuf.h>
+#include <msp430x16x.h>
+
+#define MAX_PAYLOAD_SIZE 90
+
+result_t combuf_recv(combuf_t combuf,
+                     combuf_size_t payload_size)
+{
+    uint8_t buf[MAX_PAYLOAD_SIZE];
+    msg_t msg;
+    uint8_t i;
+    uint16_t dst_addr;
+    result_t result;
+    
+    if (payload_size > MAX_PAYLOAD_SIZE)
+        return;
+
+    dst_addr = combuf_read(combuf, 1) | ((combuf_read(combuf, 0)<<8));
+
+    for (i=2; i<payload_size; i++)
+    {
+        buf[i-2] = combuf_read(combuf, i);
+    }
+
+    result = __net_send(
+            dst_addr,
+            payload_size - 2 /*dst_addr*/,
+            buf,
+            0 /*payload*/
+            );
+}
+
+
+__attribute__((used)) void    __net_recv( uint16_t src_addr, uint16_t data_size,  uint8_t *data, uint8_t lqi )
+{
+    combuf_t cb;
+    uint8_t i;
+
+    if( IS_ERROR( cb = combuf_create( COMBUF_DATA, data_size+2) ) )
+        return;
+
+    combuf_write(cb, 0, (uint8_t)(src_addr));
+    combuf_write(cb, 1, (uint8_t)(src_addr>>8));
+    for( i = 0; i < data_size; i++ ) {
+    //DBG2("body[%hhx]=%hhx",i,*(((uint8_t *)minfo.body_ptr)+i));
+        combuf_write( cb, i+2, data[i]);
+    }
+
+    combuf_send(cb);
+}
+
+REG_COMBUF_RECV(combuf_recv);
+
+/*
+void init_bridge()
+{
+}
+
+INIT(init_bridge);
+*/
+/*unused functions*/
+
+__attribute__((used)) void __net_send_done( uint8_t handle, int8_t status )
+{}
+
+__attribute__((used)) void    __net_enter( uint16_t pan_id )
+{}
+
+__attribute__((used)) void    __net_exit()
+{}
+
+void    __net_child_join( uint16_t short_addr, uint64_t ext_addr )
+{}
+
+void    __net_child_leave( uint64_t ext_addr )
+{}
+
+
+
+
+
+

@@ -1,0 +1,17 @@
+Package: zigzag
+Version: 1.0
+Section: utils 
+Priority: optional
+Architecture: all
+Essential: no
+Depends: python (>= 2.4)
+Pre-Depends: 
+Recommends: 
+Suggests:
+Installed-Size: 10K   
+Maintainer: Max Gekk [m_gekk@ipmce.ru]
+Conflicts: 
+Replaces: 
+Provides: IPMCE
+Description: Framework for sensor network
+

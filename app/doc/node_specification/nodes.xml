@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+
+<!--> Формат задания узлов. Если имя не задано, наследуется имя вида (NodeKind) с приписыванием адреса (id). Для неописанных узлов, имя "Неизвестный узел АДРЕС" <-->
+<Node id="0x10001" NodeKind="1" name="my node"></node>
+<Node id="0x10002" NodeKind="1"></node>
+<Node id="0x10003" NodeKind="1"></node>
+<Node id="0x10004" NodeKind="2"></node>
+<Node id="0x10005" NodeKind="2"></node>
+<Node id="0x10006" NodeKind="2"></node>
+
+
+<!-- Формат задания видов. Вид определяет, на каком порту узла сидит какой объект ZigZag --> 
+<NodeKind id="1" name="Датчик дыма">
+    <!-- дымовой датчик -->
+    <ZigObject id="0x8001" port="4"/>
+    <ZigObject id="0x8002" port="10"/>
+</NodeKind>
+
+
+<NodeKind id="2" name="Кнопка и лампочка">
+    <!-- кнопка + лампочка -->
+    <ZigObject id="?" port="0"/>
+    <ZigObject id="?" port="1"/>
+</NodeKind>
+    
+
+<ZigObject id="0x8000" name="Датчик напряжения батареи">
+
+
+</ZigObject>
+<ZigObject id="0x8001" name="Оптический датчик дыма">
+
+</ZigObject>
+<ZigObject id="0x8002" name="Цифровые входы и выходы">
+</ZigObject>

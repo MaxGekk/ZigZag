@@ -1,0 +1,10 @@
+Name        code
+----        ----
+Button      128
+USVD        129
+UBPD        130
+Smoke       131
+UBPD-485    132
+
+
+TODO: add bindings port:object for every node kind

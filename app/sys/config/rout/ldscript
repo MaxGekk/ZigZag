@@ -1,0 +1,258 @@
+OUTPUT_FORMAT("elf32-msp430","elf32-msp430","elf32-msp430")
+OUTPUT_ARCH(msp:16)
+
+MEMORY {
+    DBGSTR          (r)         :   ORIGIN = 0x0000,    LENGTH = 64K  
+    MODULE_INFOMEM      (r)     :   ORIGIN = 0x1080,    LENGTH = 128
+    MODULE_INTERFACE    (rx)    :   ORIGIN = 0x4000,    LENGTH = 256
+    MODULE_RAM      (rw)        :   ORIGIN = 0x1100,    LENGTH = 2K
+    MODULE_FLASH    (rx)        :   ORIGIN = 0x4100,    LENGTH = 0x2d00
+    ZIGZAG_INTERFACE    (rx)    :   ORIGIN = 0xfee0,    LENGTH = 256
+}
+
+SECTIONS {
+    
+    .interface.zig : {
+        __zigzag_load = .;
+        __critical_enter = .; . += 4;
+        __critical_exit = .; . += 4;
+        __sys_time = .; . += 4;
+        __net_addr = .; . += 4;
+        __net_send = .; . += 4;
+        __atimer_counter = .; . += 4;
+        __atimer_set = .; . += 4;
+        __atimer_stop = .; . += 4;
+        __atimer_is_set = .; . += 4;
+        __atimer_point = .; . += 4;
+        __stimer_set = .; . += 4;
+        __port_perm = .; . += 4;
+        __post_task = .; . += 4;
+        __set_sys_time = .; . += 4;
+    } > ZIGZAG_INTERFACE
+
+    .interface.app : {
+        *(.interface.app)
+    } > MODULE_INTERFACE
+
+    .obj_info : {
+        *(SORT(*.obj_info))
+    } > MODULE_FLASH
+    _begin_bind = ADDR(.obj_info);
+    _end_bind = _begin_bind + SIZEOF(.obj_info);
+
+    .module_infomem : {
+        *.module_infomem
+    } > MODULE_INFOMEM
+    _begin_module_infomem = ADDR(.module_infomem);
+
+    .sys_init : {
+        *(SORT(*.sys_init))
+    } > MODULE_FLASH
+    _begin_sys_init = ADDR(.sys_init);
+    _end_sys_init = _begin_sys_init + SIZEOF(.sys_init);
+
+    .irq_handler : {
+        *(SORT(*.irq_handler))
+    } > MODULE_FLASH
+    _begin_irq_handler = ADDR(.irq_handler);
+    _end_irq_handler = _begin_irq_handler + SIZEOF(.irq_handler);
+   
+    .isGT : {
+        *(SORT(*.isGT))
+    } > MODULE_FLASH
+    _begin_isGT = ADDR(.isGT);
+    _end_isGT = _begin_isGT + SIZEOF(.isGT);
+
+    .event_handler : {
+        *(SORT(*.event_handler))
+    } > MODULE_FLASH
+    _begin_event_handler = ADDR(.event_handler);
+    _end_event_handler = _begin_event_handler + SIZEOF(.event_handler);
+
+    .atimer_fired : {
+        *(SORT(*.atimer_fired))
+    } > MODULE_FLASH
+    _begin_atimer_fired = ADDR(.atimer_fired);
+    _end_atimer_fired = _begin_atimer_fired + SIZEOF(.atimer_fired);
+
+    .stimer_fired : {
+        *(SORT(*.stimer_fired))
+    } > MODULE_FLASH
+    _begin_stimer_fired = ADDR(.stimer_fired);
+    _end_stimer_fired = _begin_stimer_fired + SIZEOF(.stimer_fired);
+
+    .msg_recv : {
+        *(SORT(*.msg_recv))
+    } > MODULE_FLASH
+    _begin_msg_recv = ADDR(.msg_recv);
+    _end_msg_recv = _begin_msg_recv + SIZEOF(.msg_recv);
+
+    .msg_send_done : {
+        *(SORT(*.msg_send_done))
+    } > MODULE_FLASH
+    _begin_msg_send_done = ADDR(.msg_send_done);
+    _end_msg_send_done = _begin_msg_send_done + SIZEOF(.msg_send_done);
+
+    .attr_size : {
+        *(SORT(*.attr_size))
+    } > MODULE_FLASH
+    _begin_attr_size = ADDR(.attr_size);
+    _end_attr_size = _begin_attr_size + SIZEOF(.attr_size);
+
+    .attr_set : {
+        *(SORT(*.attr_set))
+    } > MODULE_FLASH
+    _begin_attr_set = ADDR(.attr_set);
+    _end_attr_set = _begin_attr_set + SIZEOF(.attr_set);
+
+    .attr_get : {
+        *(SORT(*.attr_get))
+    } > MODULE_FLASH
+    _begin_attr_get = ADDR(.attr_get);
+    _end_attr_get = _begin_attr_get + SIZEOF(.attr_get);
+
+    .text : {
+        *(.init)
+        *(.init0)  /* Start here after reset.  */
+        *(.init1)
+        *(.init2)  /* Copy data loop  */
+        *(.init3)
+        *(.init4)  /* Clear bss  */
+        *(.init5)
+        *(.init6)  /* C++ constructors.  */
+        *(.init7)
+        *(.init8)
+        *(.init9)  /* Call main().  */
+        __ctors_start = . ;
+        *(.ctors)
+        __ctors_end = . ;
+        __dtors_start = . ;
+        *(.dtors)
+        __dtors_end = . ;
+        . = ALIGN(2);
+        *(.text)
+        . = ALIGN(2);
+        *(.text.*)
+        . = ALIGN(2);
+        *(.fini9)  /*   */
+        *(.fini8)
+        *(.fini7)
+        *(.fini6)  /* C++ destructors.  */
+        *(.fini5)
+        *(.fini4)
+        *(.fini3)
+        *(.fini2)
+        *(.fini1)
+        *(.fini0)  /* Infinite loop after program termination.  */
+        *(.fini)
+
+	    . = ALIGN(2);
+        __init_start = .;
+        *(SORT(*.initappsys))
+        __init_end = .;
+
+  	    . = ALIGN(2);
+
+        __irq_start = .;
+        SHORT( DEFINED(__0_interrupt)  ?  __0_interrupt : 0xffff );
+        SHORT( DEFINED(__1_interrupt)  ?  __1_interrupt : 0xffff );
+        SHORT( DEFINED(__2_interrupt)  ?  __2_interrupt : 0xffff );
+        SHORT( DEFINED(__3_interrupt)  ?  __3_interrupt : 0xffff );
+        SHORT( DEFINED(__4_interrupt)  ?  __4_interrupt : 0xffff );
+        SHORT( DEFINED(__5_interrupt)  ?  __5_interrupt : 0xffff );
+        SHORT( DEFINED(__6_interrupt)  ?  __6_interrupt : 0xffff );
+        SHORT( DEFINED(__7_interrupt)  ?  __7_interrupt : 0xffff );
+        SHORT( DEFINED(__8_interrupt)  ?  __8_interrupt : 0xffff );
+        SHORT( DEFINED(__9_interrupt)  ?  __9_interrupt : 0xffff );
+        SHORT( DEFINED(__10_interrupt) ? __10_interrupt : 0xffff );
+        SHORT( DEFINED(__11_interrupt) ? __11_interrupt : 0xffff );
+        SHORT( DEFINED(__12_interrupt) ? __12_interrupt : 0xffff );
+        SHORT( DEFINED(__13_interrupt) ? __13_interrupt : 0xffff );
+        SHORT( DEFINED(__14_interrupt) ? __14_interrupt : 0xffff );
+        __irq_end = .;
+    
+        __combuf_recv_start = .;
+        *(.combufrecv)
+        __combuf_recv_end = .;
+
+        _etext = .;
+    } > MODULE_FLASH
+
+    .data   :   AT( ADDR(.text) + SIZEOF(.text))  {
+        PROVIDE (__data_start = .) ;
+        . = ALIGN(2);
+        *(.data)
+        . = ALIGN(2);
+        *(.gnu.linkonce.d*)
+        . = ALIGN(2);
+        _edata = . ;
+    } > MODULE_RAM
+
+    .bss  ADDR(.data) + SIZEOF(.data) : {
+        PROVIDE (__bss_start = .) ;
+        *(.bss)
+        *(COMMON)
+        PROVIDE (__bss_end = .) ;
+        _end = . ;
+    } > MODULE_RAM
+
+    .noinit ADDR(.bss) + SIZEOF(.bss) : {
+        PROVIDE (__noinit_start = .) ;
+        *(.noinit)
+        *(COMMON)
+        PROVIDE (__noinit_end = .) ;
+        _end = . ;
+    } > MODULE_RAM
+ 
+  
+    .dbgstr (NOLOAD) :
+    {
+        PROVIDE ( __dbgstr_start = . );
+        *(.dbgstr)
+        PROVIDE ( __dbgstr_end = . );
+    } > DBGSTR
+
+    .vectors (NOLOAD) :  {
+        PROVIDE (__vectors_start = .) ;
+        *(.vectors*)
+        _vectors_end = . ;
+    }
+
+  /* Stabs debugging sections.  */
+  .stab 0 : { *(.stab) }
+  .stabstr 0 : { *(.stabstr) }
+  .stab.excl 0 : { *(.stab.excl) }
+  .stab.exclstr 0 : { *(.stab.exclstr) }
+  .stab.index 0 : { *(.stab.index) }
+  .stab.indexstr 0 : { *(.stab.indexstr) }
+  .comment 0 : { *(.comment) }
+  /* DWARF debug sections.
+     Symbols in the DWARF debugging sections are relative to the beginning
+     of the section so we begin them at 0.  */
+  /* DWARF 1 */
+  .debug          0 : { *(.debug) }
+  .line           0 : { *(.line) }
+  /* GNU DWARF 1 extensions */
+  .debug_srcinfo  0 : { *(.debug_srcinfo) }
+  .debug_sfnames  0 : { *(.debug_sfnames) }
+  /* DWARF 1.1 and DWARF 2 */
+  .debug_aranges  0 : { *(.debug_aranges) }
+  .debug_pubnames 0 : { *(.debug_pubnames) }
+  /* DWARF 2 */
+  .debug_info     0 : { *(.debug_info) *(.gnu.linkonce.wi.*) }
+  .debug_abbrev   0 : { *(.debug_abbrev) }
+  .debug_line     0 : { *(.debug_line) }
+  .debug_frame    0 : { *(.debug_frame) }
+  .debug_str      0 : { *(.debug_str) }
+  .debug_loc      0 : { *(.debug_loc) }
+  .debug_macinfo  0 : { *(.debug_macinfo) }
+  
+  PROVIDE (__stack = 0x3900) ;
+  PROVIDE (__data_start_rom = _etext) ;
+  PROVIDE (__data_end_rom   = _etext + SIZEOF (.data)) ;
+  PROVIDE (__noinit_start_rom = _etext + SIZEOF (.data)) ;
+  PROVIDE (__noinit_end_rom = _etext + SIZEOF (.data) + SIZEOF (.noinit)) ;
+  PROVIDE (__subdevice_has_heap = 0) ;
+
+}
+

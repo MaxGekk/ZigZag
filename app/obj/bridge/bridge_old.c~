@@ -1,0 +1,36 @@
+/*! @file   bridge.c
+ *  @brief  Отправка данных из сети во внешнюю систему
+ *  @author Max Gekk
+ *  @date   июль 2007
+ *  @version 1
+ */   
+
+#define DBGLOG
+#define OBJ     0
+#define PORT    1
+#include    <zigzag.h>
+
+size_t    msg_recv( msg_t   msg )
+{
+    uint16_t i;
+    combuf_t cb;
+    struct msginfo minfo;
+
+    if( IS_ERROR( msg_info( msg, &minfo ) ) )
+        return 0;
+
+    if( IS_ERROR( cb = combuf_create( COMBUF_DATA, minfo.body_size) ) )
+        return 0;
+
+    DBG1("body_size = %x", (uint16_t)minfo.body_size );
+    for( i = 0; i < minfo.body_size; i++ ) {
+        DBG2("body[%hhx]=%hhx",i,*(((uint8_t *)minfo.body_ptr)+i));
+        combuf_write( cb, i, *(((uint8_t *)minfo.body_ptr)+i) );
+    }
+
+    combuf_send(cb);
+
+    msg_destroy( msg );
+    return minfo.body_size; 
+}
+

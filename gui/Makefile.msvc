@@ -1,0 +1,18 @@
+all : sample.exe
+
+OBJS=win.obj scrlib.obj sample.obj
+LIBS=gdi32.lib user32.lib
+CFLAGS = -Zi
+LFLAGS = /debug
+
+.c.o :
+	cl $(CFLAGS) -c $<
+
+sample.exe : $(OBJS)
+	link $(LFLAGS) $(OBJS) $(LIBS) /out:sample.exe
+
+clean :
+	-del *.obj
+	-del sample.exe
+	-del *.ilk
+	-del *.pdb

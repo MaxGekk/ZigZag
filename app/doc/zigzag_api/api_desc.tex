@@ -1,0 +1,1186 @@
+\newcommand{\mymacro}[1]{{\bfseries #1}}
+\newcommand{\myfunc}[1]{{\bfseries \slshape #1}}
+\newcommand{\myarg}[1]{{\bfseries #1}}
+\newcommand{\zigzag}{Z\raisebox{-.5ex}{i}gZ\nolinebreak\hspace{-.1667em}\raisebox{-.5ex}{a}\nolinebreak\hspace{-.125em}g }
+\lstset{ language=C, numbers=left, frame=leftline }
+\setlength{\unitlength}{1mm}
+
+\section{Общее описание}
+
+Система \zigzag представляет собой коммуникационную среду для обмена сообщениями между прикладными объектами
+узлов сенсорной сети. На одном узле сети может находится несколько прикладных объектов. Каждый объект идентифицируется
+уникальным номером. Прикладные объекты предназначены, в частности, для управления датчиками ( актуаторами ) узла. 
+Система \zigzag предоставляет объектам узла интерфейс прикладного программирования ( API ), который описывается в данном документе. 
+\zigzag включает в себя операционную систему и стек протоколов ZigBee, а также диспетчер узла. 
+На рисунке \ref{ZigZagArch} представлена общая архитектура системы.
+
+\begin{figure}[!h]
+\centering \begin{picture}(120,100)
+
+\put(0,0){\framebox(120,56){\bfseries \shortstack{ZigZag\\системная\\часть}}}
+\put(2,2){\framebox(116,10){\large Операционная система}}
+
+\put(2,14){\framebox(40,40){\shortstack{Стек протоколов\\ZigBee}}}
+\put(78,14){\framebox(40,40){\shortstack{Диспетчер\\узла}}}
+\put(0,58){\framebox(120,12){\bfseries \shortstack{ZigZag\\прикладная часть}}}
+
+\put(0,80){\framebox(32,20){\shortstack{Прикладной\\объект\\$\alpha$}}}
+\put(0,72){\dashbox(32,6){\small ZigZag API}}
+
+\put(34,80){\framebox(32,20){\shortstack{Прикладной\\объект\\$\beta$}}}
+\put(34,72){\dashbox(32,6){\small ZigZag API}}
+
+\put(68,80){\framebox(18,20){\ldots}}
+\put(68,72){\dashbox(18,6){\ldots}}
+
+\put(88,80){\framebox(32,20){\shortstack{Прикладной\\объект\\$\chi$}}}
+\put(88,72){\dashbox(32,6){\small ZigZag API}}
+
+\end{picture}
+
+\caption{Общая архитектура системы ZigZag.} \label{ZigZagArch}
+\end{figure}
+
+Стек протоколов ZigBee позволяет связать узлы в единую сеть. В свою очередь, диспетчер узла предназначен
+для управления стеком ZigBee. 
+
+Поскольку, на одном узле может быть несколько прикладных объектов, то в системе \zigzag используется
+концепция портов. Каждый объект привязан к определённому порту. Все входящие сообщения перенаправляются
+прикладным объектам в соответствии с их портами. 
+
+Для назначения прикладному объекту номера и порта необходимо перед включением заголовочного файла
+zigzag.h задать два макроса \mymacro{OBJ} и \mymacro{PORT}. См. листинг \ref{bindmacro}.
+
+\begin{lstlisting}[caption=Назначение объекту номера и порта, label=bindmacro]
+    #define     OBJ     19
+    #define     PORT    81
+    #include    <zigzag.h>
+\end{lstlisting}
+
+Заголовочный файл zigzag.h должен быть включён только единожды в одном прикладном объекте.
+
+Из вне прикладной объект можно представить в виде набора атрибутов и связанных с ним типов сообщений, которые
+он может обрабатывать. Система \zigzag позволяет объектам запрашивать и устанавливать атрибуты друг друга.
+
+\section{Сервисы операционной среды}
+
+\subsection{Интерфейс общего назначения}
+
+\subsubsection{Инициализация прикладного объекта}
+
+Функция \myfunc{sys\_init()} вызывается системой \zigzag при запуске и предназначена
+для инициализации внутренних структур данных прикладного объекта. Сигнатура функции
+представлена в листинге \ref{sysinitfunc}.
+
+\begin{lstlisting}[caption=\myfunc{sys\_init()} - инициализация системы, label=sysinitfunc ]
+    void    sys_init() {}
+\end{lstlisting}
+
+Прикладной объект обязан предоставить системе \zigzag реализацию этой функции.
+
+\subsubsection{Запрос текущего времени}
+
+Функция \myfunc{sys\_time()} возвращает локальное время узла в миллисекундах с 1 января 1970 года.
+Все временные метки, отправляемые в сообщениях, должны быть получены с помощью этой функции.
+Сигнатура функции представлена в листинге \ref{systimefunc}.
+
+\begin{lstlisting}[caption=\myfunc{sys\_time()} - текущее время, label=systimefunc ]
+    uint64_t    sys_time();
+\end{lstlisting}
+
+\subsection{Интерфейс системных событий}
+\label{SysEventSect}
+
+С помощью данного интерфейса система \zigzag оповещает прикладной объект о различных событиях, происходящих в системе.
+Прикладному объекту также предоставляется возможность сгенерировать определённые события. Эта возможность должна использоваться
+прикладными объектами для завершения обработки прерывания. Самые необходимые действия по обработке прерывания объект может
+проводить в самой функции обработки прерывания. После этого объект должен сгенерировать системное событие и продолжить выполнение
+в обработчике события.
+
+\subsubsection{Обработка событий}
+
+Прикладной объект должен предоставить системе \zigzag реализацию функции \myfunc{event\_handler()}, сигнатура
+которой представлена в листинге \ref{eventhandlerfunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{event\_handler()} - обработчик событий., label=eventhandlerfunc ]
+    #include    <zigzag.h>
+    void  event_handler(
+        event_type_t    event_type,
+        unidata_t       unidata
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{event\_handler()}:}
+\begin{enumerate}
+{\itshape
+\item \myarg{event\_type} - тип события. Системой \zigzag зарезервированы типы событий из диапазона от 0xe0 до 0xff. На 
+данный момент используются события представленные в таблице \ref{eventtypestab}.
+\item \myarg{unidata} - аргумент содержит дополнительные данные о событии.
+}
+\end{enumerate}
+
+\tablecaption{Системные типы событий.}
+\tablefirsthead{\hline Тип события & Номер события & Описание \\ \hline}
+\tablehead{\hline Тип события & Номер события & Описание \\ \hline}
+\tabletail{\hline}
+\tablelasttail{\hline}
+\begin{supertabular}{|l|p{2cm}|p{9cm}|}
+\label{eventtypestab}
+
+   EV\_JOIN & 0xff & Узел присоединился к сети \\\hline
+   EV\_LEAVE & 0xfe & Узел покинул сеть \\\hline
+   EV\_SLEEP & 0xfd & Узел переходит в состояние сна. Аргумент \myarg{unidata} содержит предполагаемую продолжительность сна в миллисекундах. \\\hline
+   EV\_SFREE & 0xfc & Освобождена область памяти хранилища. Аргумент \myarg{unidata} содержит дескриптор этой области памяти. \\\hline
+   EV\_RUNLOCK & 0xfb & Завершён доступ на чтение к области памяти хранилища. Аргумент \myarg{unidata} равен дескриптору области памяти. \\\hline
+   EV\_WUNLOCK & 0xfa & Завершён доступ на запись к области памяти хранилища. Аргумент \myarg{unidata} равен дескриптору области памяти. \\\hline
+   EV\_AWRITTEN & 0xf9 & Записано новое значение атрибута. Аргумент \myarg{unidata} равен номеру атрибута. \\\hline
+
+\end{supertabular}
+
+
+\subsubsection{Генерация событий }
+
+При помощи вызова функции \myfunc{event\_emit()} прикладной объект просит систему \zigzag сгенерировать событие и вызвать обработчик
+событий \myfunc{event\_handler()}. При возникновении аппаратного прерывания и после его предварительной обработки объект должен вызвать
+функцию \myfunc{event\_emit()} для продолжения обработки прерывания уже в функции \myfunc{event\_handler()}. Сигнатура функции \myfunc{event\_emit()}
+представлена в листинге \ref{eventemitfunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{event\_emit()} - генерация события., label=eventemitfunc ]
+    #include    <zigzag.h>
+    result_t  event_emit(
+        priority_t      priority,
+        event_type_t    event_type,
+        unidata_t       unidata
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{event\_emit()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{priority} - приоритет сгенерированного события перед всеми остальными событиями. Чем больше значение аргумента, тем выше
+приоритет. Допустимые значения аргумента из диапазона от 0 до 127.
+\item \myarg{event\_type} - тип события. Разрешено использовать типы событий из диапазона от 0x00 до 0xdf.
+\item \myarg{unidata} - значение, которое будет передано в соответствующий вызов функции \myfunc{event\_handler}.
+\end{enumerate}
+}
+
+\subsection{Интерфейс доступа к хранилищу}
+Хранилище предназначено для сохранения данных о каком-либо событии. Хранилище может использоваться для
+обмена данными как внутри прикладного объекта, так и между различными объектами, которые при этом могут находиться
+на разных узлах сети. 
+
+\subsubsection{Запрос места в хранилище}
+
+Для запроса места в хранилище предназначена функция \myfunc{storage\_alloc()}. Сигнатура этой функции 
+представлена в листинге \ref{storageallocfunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{storage\_alloc()} - запрос места в хранилище, label=storageallocfunc]
+    #include    <zigzag.h>
+    int32_t storage_alloc(
+        size_t  size
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{storage\_alloc()}:}
+
+{\itshape
+\begin{enumerate} 
+\item \myarg{size} - размер запрашиваемой памяти в хранилище.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемое значение:}
+
+{\itshape
+\begin{itemize}
+\item Функция возвращает отрицательное значение в случае ошибки. При этом допустимы следующие значения:
+    \begin{itemize}
+        \item ENOMEM - недостаточно места в хранилище,
+        \item EINVAL - некорректное значение аргумента \myarg{size},
+        \item ENOSYS - функция не поддерживается в текущей версии системы.
+    \end{itemize}
+\item Если место в хранилище успешно выделено, возвращается неотрицательный дескриптор. Этот дескриптор впоследствии
+может быть передан другим прикладным объектам в сети.
+\end{itemize}
+}
+
+\subsubsection{Получение доступа к данным}
+
+К одной выделенной области памяти в хранилище могут получить доступ несколько прикладных объектов. При этом
+в любой момент времени либо несколько объектов могут иметь доступ на чтение, либо только один объект может иметь доступ на запись.
+
+В листинге \ref{storagelockfunc} представлена функция получения доступа.
+
+\begin{lstlisting}[caption=Функция \myfunc{storage\_lock()} - доступ к хранилищу, label=storagelockfunc ]
+    #include    <zigzag.h>
+    void *  storage_lock(
+        int32_t storage_desc,
+        uint8_t  mode
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{storage\_lock()}:}
+
+{\itshape
+\begin{enumerate} 
+\item \myarg{storage\_desc} - дескриптор области памяти в хранилище.
+\item \myarg{mode} - запрашиваемый режим доступа. Допустимы следующие значения:
+    \begin{itemize}
+        \item A\_READ - доступ только на чтение,
+        \item A\_RW - доступ на чтение и запись.
+    \end{itemize}
+\end{enumerate}
+}
+
+{\bfseries Возвращаемое значение:}
+
+{\itshape
+Функция возвращает указатель на область памяти в случае успешного вызова или 0 в противном случае.
+}
+
+После завершения доступа к памяти хранилища должна быть вызвана функция \myfunc{storage\_unlock()}.
+Сигнатура функции представлена в листинге \ref{storageunlockfunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{storage\_unlock()} - завершение доступа, label=storageunlockfunc ]
+    #include    <zigzag.h>
+    result_t  storage_unlock(
+        int32_t storage_desc
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{storage\_unlock()}:}
+
+{\itshape
+\begin{enumerate} 
+\item \myarg{storage\_desc} - дескриптор области памяти в хранилище.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - успешно выполнено завершение доступа к хранилищу,
+\item EINVAL - некорректное значение аргумента \myarg{storage\_desc},
+\item ENOSYS - в текущей реализации функция не поддерживается.
+\end{itemize}
+}
+
+Заметим, что системы \zigzag извещает прикладные объекты узла о различных событиях, связанных с 
+хранилищем, посредством интерфейса системных событий (см. раздел \ref{SysEventSect}).
+
+\subsubsection{ Высвобождение места в хранилище }
+
+Ранее выделенная область памяти может быть освобождена и возвращена в хранилище с помощью
+вызова функции \myfunc{storage\_free()} ( см. листинг. \ref{storagefreefunc} ).
+
+\begin{lstlisting}[caption=Функция \myfunc{storage\_free()} - возврат памяти в хранилище, label=storagefreefunc ]
+    #include    <zigzag.h>
+    result_t  storage_free(
+        int32_t storage_desc
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{storage\_free()}:}
+
+{\itshape
+\begin{enumerate} 
+\item \myarg{storage\_desc} - дескриптор области памяти в хранилище.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - успешно выполнено освобождение области памяти в хранилище,
+\item EINVAL - некорректное значение аргумента \myarg{storage\_desc},
+\item ENOSYS - в текущей реализации функция не поддерживается.
+\end{itemize}
+}
+
+\subsection{Интерфейс синхронных таймеров}
+    Синхронные таймеры предоставляют возможность отсчитывать интервалы времени.
+В силу того, что функция извещения об истечении интервала вызывается из задачи,
+система не может гарантировать определённое отклонение этого вызова от конца интервала.
+Число доступных синхронных таймеров в системе определяется константой SOFT\_ TIMER\_TOTAL.
+
+\subsubsection{ Установка таймера }
+    Установить таймер на определённый интервал срабатывания позволяет функция \myfunc{stimer\_set}.
+Если таймер уже был установлен, то он переустанавливается на новый интервал.
+Сигнатура этой функции представлена в листинге \ref{stimersetfunc}
+\begin{lstlisting}[caption=Функция \myfunc{stimer\_set()} - установка синхронного таймера. , label=stimersetfunc]
+    #include    <zigzag.h>
+    result_t    stimer_set( 
+        const uint8_t tnum, 
+        const uint32_t milli_sec 
+    );
+\end{lstlisting}
+{\bfseries Аргументы функции \myfunc{stimer\_set()}:}
+
+{\itshape
+\begin{enumerate} 
+\item \myarg{tnum} - номер синхронного таймера. Допустимы значения из диапазона от 0 до SOFT\_TIMER\_TOTAL.
+\item \myarg{milli\_sec} - длинна интервала в миллисекунда относительно текущего момента времени.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - синхронный таймер успешно установлен,
+\item EINVAL - некорректное значение аргумента \myarg{tnum},
+\item ENOSYS - в текущей реализации функция не поддерживается.
+\end{itemize}
+}
+
+\subsubsection{ Срабатывание таймер }
+    По истечении заданного интервала времени система \zigzag вызывает функцию \myfunc{stimer\_fired}.
+Сигнатура этой функции представлена в листинге \ref{stimerfiredfunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{stimer\_fired()} - срабатывание синхр. таймера. , label=stimerfiredfunc]
+    #include    <zigzag.h>
+    void    stimer_fired( 
+        const uint8_t tnum 
+    );
+\end{lstlisting}
+{\bfseries Аргументы функции \myfunc{stimer\_fired()}:}
+
+{\itshape
+\begin{enumerate} 
+\item \myarg{tnum} - номер сработавшего синхронного таймера.
+\end{enumerate}
+}
+
+\section{Сервисы сетевого взаимодействия}
+
+\subsection{Интерфейс доступа к атрибутам}
+
+\subsubsection{Чтение атрибута}
+
+Получить текущее значение атрибута можно с помощью функции \myfunc{attr\_read()}.
+Сигнатура этой функции представлена в листинге \ref{attrreadfunc}
+
+\begin{lstlisting}[caption=Функция \myfunc{attr\_read()} - чтение атрибута. , label=attrreadfunc]
+    #include    <zigzag.h>
+    result_t attr_read(
+        uint8_t     anum,
+        void        *to
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{attr\_read()}}:
+
+{\itshape
+\begin{enumerate}
+\item \myarg{anum} - номер запрашиваемого атрибута.
+\item \myarg{to} - указатель на область памяти, в которую будет записано текущее значение атрибута.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемое значение:}
+
+{\itshape
+Функция \myfunc{attr\_read()} в случае успешного вызова возвращает неотрицательное значение, равное
+размеру атрибута. Если вызов был неуспешен, то возвращается одно из следующих отрицательных значений:
+\begin{itemize}
+\item EINVAL - некорректный номер атрибута.
+\item EACCESS - нарушен режим доступа к атрибуту.
+\item ENOSYS - в текущей реализации атрибут не доступен.
+\end{itemize}
+}
+
+\subsubsection{Запись атрибута}
+
+Запись нового значения атрибута прикладного объекта осуществляется посредством вызова функции \myfunc{attr\_write()}. 
+Сигнатура этой функции представленав листинге \ref{attrwritefunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{attr\_write()} - запись атрибута. , label=attrwritefunc ]
+    #include    <zigzag.h>
+    result_t attr_write(
+        uint8_t     anum,
+        void        *from
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{attr\_write()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{anum} - номер записываемого атрибута.
+\item \myarg{from} - указатель на область памяти, содержащей новое значение атрибута.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемое значение:}
+
+{\itshape
+Функция \myfunc{attr\_write()} должна возвратить одно из следующих значений:
+\begin{itemize}
+\item ENOERR - успешно установлено новое значение атрибута.
+\item EINVAL - некорректный номер атрибута.
+\item EACCESS - нарушен режим доступа к атрибуту. Запрещено изменение атрибута.
+\item ENOSYS - в текущей реализации не реализована установка атрибута.
+\end{itemize}
+}
+
+\subsection{Интерфейс обмена сообщениями}
+
+\subsubsection{Создание нового сообщения}
+
+Обмен данными между прикладными объектами осуществляется посредством передачи сообщений.
+В листинге \ref{newmsgfunc} представлена сигнатура функции формирования нового сообщения.
+
+\begin{lstlisting}[caption=Функция \myfunc{msg\_new()} - создание сообщения., label=newmsgfunc, numbers=left, frame=leftline]
+    #include    <zigzag.h>
+    msg_t   msg_new(
+        net_addr_t  dst_addr,
+        app_port_t  dst_port,
+        uint8_t     msg_type,
+        size_t      body_size
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{msg\_new()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{dst\_addr} - сетевой адрес назначения,
+\item \myarg{dst\_port} - прикладной порт назначения,
+\item \myarg{msg\_type} - тип сообщения. Допустимые типы сообщений от 32 до 255.
+\item \myarg{body\_size} - размер тела сообщения в октетах.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемое значение:}
+
+{\itshape
+Функция возращает идентификатор сообщения в случае успешного вызова, а именно значение $\geq 0$, либо
+отрицательное значение в случае ошибки. Допустимы следующие ошибочные значения:
+\begin{itemize}
+\item EINVAL - некорректное значение аргумента,
+\item ENOMEM - недостаточно памяти для создания нового сообщения.
+\item ENOSYS - в текущей реализации функция не поддерживается.
+\end{itemize}
+}
+
+После создания сообщение находится в заблокированном состоянии, то есть система \zigzag не
+может производить над этим сообщением какие-либо дейтсвия ( например, отправку ). 
+
+\subsubsection{Получение информации о сообщении}
+
+Пока сообщение находится в заблокированном состоянии информация о нём может быть получена посредством
+вызова функции \myfunc{msg\_info()}. Сигнатура этой функции представлена в листинге \ref{msginfofunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{msg\_info()} - информация о сообщении, label=msginfofunc ]
+    #include    <zigzag.h>
+    result_t msg_info(
+        msg_t   msg,  
+        struct msginfo  *info
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{msg\_info()}:}
+
+\begin{enumerate}
+{\itshape
+\item \myarg{msg} - идентификатор сообщения.
+\item \myarg{info} - указатель на структуру, в которую будет скопирована информация о сообщении. Структура
+определена в заголовочном файле zigzag.h. Определение структуры представлено в листинге \ref{msginfostruc}.
+}
+
+\begin{lstlisting}[caption=Определение структуры \myarg{msginfo}., label=msginfostruc ]
+    struct msginfo {
+        net_addr_t  dst_addr;
+        app_port_t  dst_port;
+        net_addr_t  src_addr;
+        app_port_t  src_port;
+        uint8_t     msg_type;
+        size_t      body_size;
+        void        *body_ptr;
+    };
+\end{lstlisting}
+
+{\bfseries Описание полей структуры \myarg{msginfo}:}
+
+{\itshape
+\begin{itemize}
+\item \myarg{dst\_addr} - сетевой адрес назначения,
+\item \myarg{dst\_port} - прикладной порт назначения,
+\item \myarg{src\_addr} - сетевой адрес источника,
+\item \myarg{src\_port} - прикладной порт источника,
+\item \myarg{msg\_type} - тип сообщения,
+\item \myarg{body\_size} - размер тела сообщения в октетах,
+\item \myarg{body\_ptr} - указатель на тело сообщения.
+\end{itemize}
+}
+
+\end{enumerate}
+
+
+{\bfseries Возвращаемые функцией \myfunc{msg\_info()} значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - информация о сообщении успешно получена,
+\item EINVAL - неправильный идентификатор сообщения или аргумент \myarg{info} равен нулю.
+\item ENOSYS - в текущей реализации вызов функции не поддерживается.
+\end{itemize}
+}
+
+\subsubsection{Удаление сообщения}
+
+Удаление сообщения из системы осуществляется посредством функции \myfunc{msg\_destroy}. 
+Сигнатура функции представлена в листинге \ref{msgdestroyfunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{msg\_destroy()} - удаление сообщения., label=msgdestroyfunc ]
+    #include    <zigzag.h>
+    result_t msg_destroy(
+        msg_t   msg
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{msg\_destroy()}:}
+
+{\itshape
+\begin{enumerate}
+\item msg - идентификатор удаляемого сообщения.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые функцией \myfunc{msg\_destroy()} значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - сообщение успешно удалено из системы,
+\item EINVAL - некорретный идентификатор сообщения,
+\item EBUSY - системы производит над сообщением какие-то операции. Удалено может быть только 
+заблокированное сообщение.
+\item ENOSYS - в текущей версии системы функция не поддерживается.
+\end{itemize}
+}
+
+\subsubsection{Передача сообщений}
+
+Для передачи сообщения предназначена функция \myfunc{msg\_send()}. После вызова этой функции
+сообщение разблокируется и система \zigzag начинает процедуру отправки этого сообщения по назначению.
+Сигнатура функции \myfunc{msg\_send()} представлена в листинге \ref{msgsendfunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{msg\_send()} - отправка сообщения., label=msgsendfunc ]
+    #include    <zigzag.h>
+    result_t msg_send(
+        msg_t   msg
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{msg\_send()}:}
+
+{\itshape
+\begin{enumerate}
+\item msg - идентификатор отправляемого сообщения.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые функцией \myfunc{msg\_send()} значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - успешно начата процедура отправки сообщения,
+\item EINVAL - некорректное значение аргумента \myarg{msg},
+\item ENOSYS - функция не поддерживается системой \zigzag.
+\end{itemize}
+}
+
+После окончания процедуры отправки система \zigzag вызывает функцию \myfunc{msg\_send\_done()},
+в свою очередь прикладной объект обязан предоставить реализацию этой функции. В листинге \ref{msgsenddonefunc} представлена 
+сигнатура функции \myfunc{msg\_send\_done()}.
+
+\begin{lstlisting}[caption=Функция \myfunc{msg\_send\_done()} - окончание отправки, label=msgsenddonefunc ]
+    #include    <zigzag.h>
+    void msg_send_done(
+        msg_t   msg
+        send_status_t   status
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{msg\_send\_done()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{msg} - идентификатор сообщения,
+\item \myarg{status} - статус завершения процедуры отправки сообщения. Допустимы следующие значения:
+\begin{itemize}
+\item STATUS\_SUCCESS - сообщение успешно отправлено по назначению,
+\item STATUS\_TIMEOUT - продолжительность процедуры отправки превысила допустимый предел. Сообщение
+не было отправлено,
+\item STATUS\_MAX\_ATTEMPTS - превышено число попыток отправки сообщения. Сообщение не было отправлено по 
+назначению.
+\end{itemize}
+\end{enumerate}
+}
+\subsubsection{Приём сообщений}
+
+Приняв сообщение предназначенное данному прикладному объекту система \zigzag вызывает функцию
+\myfunc{msg\_recv()}. В свою очередь прикладной объект обязан предоставить реализацию этой функции.
+Сигнатура функции представлена в листинге \ref{msgrecvfunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{msg\_recv()} - приём сообщения., label=msgrecvfunc ]
+    #include    <zigzag.h>
+    size_t msg_recv(
+        msg_t   msg
+        ) {}
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{msg\_recv()}:}
+
+{\itshape
+\begin{enumerate} 
+\item \myarg{msg} - идентификатор принятого сообщения.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемое значение:}
+
+{\itshape
+Функция обязана возвратить размер всего сообщения ( включая заголовок сообщения ) или 0, если размер
+сообщения определить не удалось.
+}
+
+Перед вызовом функции \myfunc{msg\_recv()} сообщение переводится в заблокированное состояние. Поэтому прикладной
+объект может воспользоваться функцией \myfunc{msg\_info()} для получения информации о сообщении.
+
+Поскольку размер тела сообщения системе не известен, то поле \myarg{body \_size} структуры \myarg{msginfo} равно 0. При этом поле
+\myarg{body\_ptr} указывает на первый октет тела сообщения. По этой же причине прикладной объект обязан сообщить
+системе размер сообщения, возвратив его в функции \myfunc{msg\_recv()}. Если \myfunc{msg\_recv()} возвратит 
+некорректное значение, то оставшиеся сообщения в пакете будут обработаны неправильно.
+
+\section{Сервисы абстракции от аппаратуры}
+
+\subsection{Интерфейс аппаратных прерываний}
+\subsubsection{Обработка прерываний}
+
+Обработка аппаратных прерываний осуществляется в функции \myfunc{irq\_ handler()}. Прикладной объект обязан 
+предоставить реализацию этой функции. Сигнатура функции представлена в листинге \ref{irqhandlerfunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{irq\_handler()} - обработчик прерываний., label=irqhandlerfunc ]
+    #include    <zigzag.h>
+    void  irq_handler(
+        irq_t   irq
+        ) {}
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{irq\_handler()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{irq} - номер прерывания. Зависит от используемого микроконтроллера. Так для TI msp430 определены
+следующие номера прерываний ( в скобках указан адрес вектора прерывания ):
+    \begin{itemize}
+        \item 0 - DAC/DMA ( 0xffe0 ),
+        \item 2 - PORT2 ( 0xffe2 ),
+        \item 8 - PORT1 ( 0xffe8 ),
+        \item 14 - ADC 12 ( 0xffee )
+        \item 22 - COMPARATOR A ( 0xfff6 )
+    \end{itemize}
+\end{enumerate}
+}
+
+Из функции \myfunc{irq\_handler} разрешено вызывать следующие функции системы \zigzag:
+\begin{itemize}
+\item \myfunc{event\_emit()};
+\item \myfunc{storage\_alloc()}, \myfunc{storage\_destroy()};
+\item \myfunc{storage\_lock()},  \myfunc{storage\_unlock()};
+\item \myfunc{sys\_time()};
+\item \myfunc{timer\_set()}, \myfunc{timer\_info()}, \myfunc{timer\_stop()}.
+\end{itemize}
+
+
+\subsection{Интерфейс асинхронных таймеров}
+
+Данный интерфейс позволяет воспользоваться возможностями существующего в системе аппаратного таймера. Число
+доступных таймеров зависит от аппаратной конфигурации узла.
+
+\subsubsection{Значение счётчика таймера}
+
+Функция \myfunc{timer\_counter()} возвращает текущее значение счётчика таймера. Частота обновления счётчика
+зависит от аппаратной конфигурации узла. В листинге \ref{timercounterfunc} представлена сигнатура функции
+\myfunc{timer\_ counter()}.
+
+\begin{lstlisting}[caption=Функция \myfunc{timer\_counter()} - значение счётчика., label=timercounterfunc ]
+    #include    <zigzag.h>
+    uint32_t    timer_counter()
+\end{lstlisting}
+
+\subsubsection{Установка таймера}
+
+Установить таймер на определённое время срабатывания позволяет функция \myfunc{timer\_set()}. Сигнатура
+этой функции представлена в листинге \ref{timersetfunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{timer\_set()} - установка таймера., label=timersetfunc ]
+    #include    <zigzag.h>
+    result_t    timer_set(
+        uint8_t     tnum,
+        uint32_t    tpoint
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{timer\_set()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{tnum} - номер аппаратного таймера. Число доступных таймеров зависит от реализации.
+\item \myarg{tpoint} - момент времени срабатывания таймера. Когда \myarg{tpoint} будет равен счётчику
+таймера произойдёт срабатывание. При повторном вызове \myfunc{timer\_set()} таймер устанавливается
+на новое значение \myarg{tpoint}.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape 
+\begin{itemize}
+\item ENOERR - таймер успешно установлен,
+\item EINVAL - некорректное значение аргумента. Возможно неправильно указан номер таймера.
+\item ENOSYS - функция не поддреживается системой.
+\end{itemize}
+}
+
+\subsubsection{Срабатывание таймера}
+
+Если таймер был установлен посредством функции \myfunc{timer\_set()} и \myarg{tpoint}$\geq$\myfunc{timer\_count()}
+происходит срабатывание таймера и система вызывает функцию \myfunc{timer\_fired()}. Прикладной объект обязан
+предоставить реализацию этой функции. Сигнатура функции \myfunc{timer\_fired()} представлена в листинге \ref{timerfiredfunc}.
+
+\begin{lstlisting}[caption=Функция \myfunc{timer\_fired()} - срабатывание таймера., label=timerfiredfunc ]
+    #include    <zigzag.h>
+    void    timer_fired(
+        uint8_t     tnum
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{timer\_fired()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{tnum} - номер сработавшего аппаратного таймера.
+\end{enumerate}
+}
+
+Из функции \myfunc{timer\_fired()} разрешено вызывать те же функции, что и из \myfunc{irq\_handler()}.
+
+\subsubsection{Получение информации о таймере}
+
+Узнать установлен ли таймер и на какое значение  можно с помощью функции \myfunc{timer\_info()}, сигнатура
+которой представлена в листинге \ref{timerinfofunc}.
+
+\begin{lstlisting}[caption=\myfunc{timer\_info()} - информация о таймере, label=timerinfofunc ]
+    #include    <zigzag.h>
+
+    result_t    timer_info(
+        uint8_t     tnum,
+        struct timerinfo    *tinfo
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{timer\_info()}:}
+
+\begin{enumerate}
+{\itshape
+\item \myarg{tnum} - номер таймера, информацию о котором требуется получить.
+\item \myarg{tinfo} - указатель на структуру, в которую записывается информация о таймере. Структура определена в заголовочном
+файле zigzag.h. Определение структуры представлено в листинге \ref{timerinfostruc}.
+}
+
+\begin{lstlisting}[caption=Определение структуры \myarg{timerinfo}, label=timerinfostruc]
+    struct timerinfo {
+        uint8_t     is_set;
+        uint32_t    tpoint;
+    };
+\end{lstlisting}
+
+{\bfseries Описание полей структуры:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{is\_set} Если поле равно 0, то таймер не установлен, иначе если \myarg{is\_set} > 0, то таймер установлен.
+\item \myarg{tpoint} - значение счётчика, при достижении которого должно произойти срабатывание таймера в случае если он установлен.
+\end{enumerate}
+}
+\end{enumerate}
+
+\subsubsection{Остановка таймера}
+
+    Остановить установленный таймер позволяет функция \myfunc{timer\_stop()}.
+В листинге \ref{timerstopfunc} представлена сигнатура этой функции.
+
+\begin{lstlisting}[caption=\myfunc{timer\_stop()} - остановка таймера, label=timerstopfunc ]
+    #include    <zigzag.h>
+
+    result_t    timer_stop(
+        uint8_t     tnum
+        );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{timer\_stop()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{tnum} - номер таймера, который требуется остановить.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - таймер успешно остановлен,
+\item EINVAL - некорректное значение аргумента \myarg{tnum},
+\item ENOSYS - в текущей реализации функция не поддерживается.
+\end{itemize}
+}
+
+\subsection{Интерфейс цифровых входов/выходов}
+    Данный интерфейс позволяет работать с портами цифровых входов/выходов. Число доступных в системе
+портов задаётся константой PORT\_TOTAL. Нумерация портов начинается с 1.
+
+\subsubsection{Запись в порт}
+    Функция \myfunc{port\_write()} позволяет задать значения битов порта, которые будут выведены 
+на соответствующие ножки ввода/вывода ( сконфигурированные на функцию ввода/вывода и имеющие
+направление на вывод ). Сигнатура функции представлена в листинге \ref{portwritefunc}.
+\begin{lstlisting}[caption=\myfunc{port\_write()} - запись в порт, label=portwritefunc ]
+    #include    <zigzag.h>
+    result_t    port_write( 
+        const uint8_t  port_num, 
+        const port_t mask, 
+        const port_t value 
+    );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{port\_write()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{port\_num} - номер порта.
+\item \myarg{mask} - маска, задающая выходы порта, которые будут записаны.
+\item \myarg{value} - значение, которое будет записано в порт в соответствии с маской.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - все биты, определённые маской, успешно записаны,
+\item EINVAL - некорректное значение аргумента \myarg{port\_num},
+\item EPERM - запись в порт запрещена
+\item ENOSYS - в текущей реализации функция не поддерживается.
+\end{itemize}
+}
+
+\subsubsection{Чтение из порта}
+    Если биты порта скофигурированы на функцию ввода/вывода и имеют направление на ввод,
+то с помощью функции \myfunc{port\_read()} могут быть получены уровни входных сигналов
+соответсвующих входов порта. Сигнатура функции представлена в листинге \myfunc{portreadfunc}.
+\begin{lstlisting}[caption=\myfunc{port\_read()} - чтение из порта, label=portreadfunc ]
+    #include    <zigzag.h>
+    result_t    port_read( 
+        const uint8_t port_num, 
+        const port_t mask, 
+        port_t *const value_ptr
+    );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{port\_read()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{port\_num} - номер порта.
+\item \myarg{mask} - маска, задающая входы порта, которые будут прочитаны.
+\item \myarg{value\_ptr} - указатель на область памяти, в которую будут записаны текущие значения
+входов порта в соответсвии с маской.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - все биты, определённые маской, успешно прочитаны,
+\item EINVAL - некорректное значение аргумента \myarg{port\_num},
+\item EPERM - чтение из порта запрещена
+\item ENOSYS - в текущей реализации функция не поддерживается.
+\end{itemize}
+}
+
+\subsubsection{Установка атрибутов порта}
+    Функция \myfunc{port\_set\_attr} позволяет сконфигурировать порт, задав соответствующие атрибуты
+порта. В качестве параметра в функцию \myfunc{port\_set\_attr} передаётся указатель на структуру с атрибутами
+порта. В листинге \ref{portattrstruc} представлено определение структуры из заголовочного файла zigzag.h, 
+содержащей атрибуты порта.
+\begin{lstlisting}[caption=Определение структуры \myarg{port\_attr\_t}, label=portattrstruc ]
+    typedef struct {
+        port_t  dir;
+        port_t  sel;
+        port_t  ie;
+        port_t  ies;
+} port_attr_t;
+\end{lstlisting}
+
+{\bfseries Поля структуры \myfunc{port\_attr\_t}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{dir} - направление порта. Если соответствующий бит установлен в 1, то ножка
+порта переключается на вывод. В противном случае на ввод.
+\item \myarg{sel} - поле выбора функции. Ножки порта могут быть мультиплексированы с другими функциями
+периферийных модулей. Каждый бит этого поля определяет, как будет использована ножка - в качестве порта
+ввода/вывода или в качестве функции периферийного модуля. Если соответствующий бит равен 0, то для 
+ножки выбирается функция ввода/вывода, иначе функция периферийного модуля.
+\item \myarg{ie} - разрешение прерываний. Каждый бит этого поля разрешает прерывание для соответствующей 
+ножки порта ( не для всех портов ). Если установлен бит в 0, то прерывание запрещено, иначе разрешено.
+\item \myarg{ies} - выбор фронта прерывания. Каждый бит данного поля позволяет выбрать, по какому фронту 
+сигнала будет происходить прерывание для соответствующей ножки ввода/вывода ( не для всех портов ).
+Если соответствующий бит поля равен 0, то флаг прерывания устанавливается при изменении уровня сигнала с
+низкого на высокий. Есл бит равен 1, то флаг прерывания устанавливается при изменении уровня сигнала с
+высокого на низкий.
+\end{enumerate}
+}
+
+В листинге \ref{portsetattrfunc} представлена сигнатура функции установки атрибутов порта.
+
+\begin{lstlisting}[caption=\myarg{port\_set\_attr()} - установка атрибутов порта, label=portsetattrfunc ]
+    #include    <zigzag.h>
+    result_t    port_set_attr( 
+        const uint8_t port_num, 
+        const port_t mask, 
+        const port_attr_t *const port_attr_ptr 
+    );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{port\_set\_attr()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{port\_num} - номер порта.
+\item \myarg{mask} - маска, задающая входы/выходы порта, атрибуты которых будут установлены.
+\item \myarg{port\_attr\_ptr} - указатель на структуру с новыми значениями атрибутов.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - атрибуты всех входов/выходов успешно установлены в соответствии с маской,
+\item EINVAL - некорректное значение аргумента \myarg{port\_num},
+\item EPERM - установка атрибутов какого-либо из входов/выходов порта из маски запрещена,
+\item ENOSYS - в текущей реализации функция не поддерживается.
+\end{itemize}
+}
+
+\subsubsection{Получение атрибутов порта}
+    Получить текущие значения атрибутов порта позволяет функция \myfunc{port\_get \_attr},
+сигнатура которой представлена в листинге \ref{portgetattrfunc}.
+
+\begin{lstlisting}[caption=\myarg{port\_get\_attr()} - получение атрибутов порта, label=portgetattrfunc ]
+    #include    <zigzag.h>
+    result_t    port_get_attr( 
+        const uint8_t port_num, 
+        const port_t mask, 
+        port_attr_t *const port_attr_ptr 
+    );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{port\_get\_attr()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{port\_num} - номер порта.
+\item \myarg{mask} - маска, задающая входы/выходы порта, атрибуты которых должны быть получены.
+\item \myarg{port\_attr\_ptr} - указатель на структуру, в которую будут записаны текущие значения атрибутов порта.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - атрибуты всех входов/выходов успешно получены в соответствии с маской,
+\item EINVAL - некорректное значение аргумента \myarg{port\_num},
+\item EPERM - получение атрибутов какого-либо из входов/выходов порта из маски запрещена,
+\item ENOSYS - в текущей реализации функция не поддерживается.
+\end{itemize}
+}
+
+\subsubsection{Получение флагов прерываний}
+    Ножки определённых портов имеют возможность вызова прерываний. Для получения текущих
+значений флагов прерываний порта предназначена функци \myfunc{port\_get\_iflag()}.
+Сигнатура этой функции представлена в листинге \ref{portgetiflagfunc}.
+
+\begin{lstlisting}[caption=\myarg{port\_get\_iflag()} - получение флагов прерывний, label=portgetiflagfunc ]
+    #include    <zigzag.h>
+    result_t    port_get_iflag( 
+        const uint8_t port_num, 
+        const port_t mask, 
+        port_t *const iflag_ptr 
+    );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{port\_get\_iflag()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{port\_num} - номер порта.
+\item \myarg{mask} - маска, задающая входы/выходы порта, флаги прерываний которых должны быть получены.
+\item \myarg{iflag\_ptr} - указатель на область памяти, в которую будут записаны текущие значения флагов прерываний
+порта в соответствии с маской.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - успешно получены все флаги прерываний порта,
+\item EINVAL - некорректное значение аргумента \myarg{port\_num},
+\item EPERM - получение флага прерывания какого-либо из входов/выходов порта из маски запрещена,
+\item ENOSYS - в текущей реализации функция не поддерживается.
+\end{itemize}
+}
+
+\subsubsection{Сброс флагов прерываний}
+    Для сброса флагов прерываний ножек порта предназначена функци \myfunc{port\_reset\_iflag()}.
+Сигнатура этой функции представлена в листинге \ref{portresetiflagfunc}.
+
+\begin{lstlisting}[caption=\myarg{port\_reset\_iflag()} - сброс флагов прерывний, label=portresetiflagfunc ]
+    #include    <zigzag.h>
+    result_t    port_reset_iflag( 
+        const uint8_t port_num, 
+        const port_t mask 
+    );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{port\_reset\_iflag()}:}
+
+{\itshape
+\begin{enumerate}
+\item \myarg{port\_num} - номер порта.
+\item \myarg{mask} - маска, задающая входы/выходы порта, флаги прерываний которых должны быть сброшены.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - успешно сброшены все флаги прерываний порта в соответствии с маской,
+\item EINVAL - некорректное значение аргумента \myarg{port\_num},
+\item EPERM - сброс флага прерывания какого-либо из входов/выходов порта из маски запрещена,
+\item ENOSYS - в текущей реализации функция не поддерживается.
+\end{itemize}
+}
+
+\subsection{Интерфейс АЦП}
+\subsubsection{Инициализация АЦП}
+Перед использованием аналого-цифрового преобразователя его необходимо проинициализировать,
+задав режим работы. Сигнатура функции инициализации представлена в листинге \ref{adcinitfunc}.
+
+\begin{lstlisting}[caption=\myarg{adc\_init()} - инициализация АЦП, label=adcinitfunc ]
+    #include    <zigzag.h>
+    result_t    adc_init( adc_mode_t mode, ... );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{adc\_init()}:}
+{\itshape
+\begin{enumerate}
+\item \myarg{mode} - режим работы АЦП. Допустимы следующие режимы:
+    \begin{itemize}
+        \item SINGLE\_CONVERSION - одна выборка-преобразование с канала 0.
+    \end{itemize}
+\item \myarg{...} - дополнительные аргументы, зависящие от режима.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - АЦП успешно проинициализировано,
+\item EINVAL - некорректное значение аргумента функции,
+\end{itemize}
+}
+
+\subsubsection{Запуск АЦП}
+Подготовка и запуск выборки-преобразования аналого-цифрового преобразователя. 
+\begin{lstlisting}[caption=\myarg{adc\_start()} - запуск АЦП, label=adcstartfunc ]
+    #include    <zigzag.h>
+    result_t    adc_start( bool_t only_prepare );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{adc\_start()}:}
+{\itshape
+\begin{enumerate}
+\item \myarg{only\_prepare} - Если значение параметра равно TRUE, то функция
+    должна только подготовить АЦП к процедуре выборки и преобразования.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+
+{\itshape
+\begin{itemize}
+\item ENOERR - выборка-преобразование запущены,
+\end{itemize}
+}
+
+\subsubsection{Получение данных с АЦП}
+Функция позволяет получить результат преобразования АЦП. Результаты преобразования
+становятся доступны после получения события EV\_ADC.
+
+\begin{lstlisting}[caption=\myarg{adc\_read()} - вычитывание с АЦП, label=adcreadfunc ]
+    #include    <zigzag.h>
+    int32_t     adc_read( uint16_t channel );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{adc\_read()}:}
+{\itshape
+\begin{enumerate}
+\item \myarg{channel} - номер канала.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+Возвращается очередное значение преобразования или значение < 0 в
+случае ошибки.
+
+\subsubsection{Останов АЦП}
+Функция \myfunc{adc\_stop()} предназначена для остановки работы АЦП. Для повторного
+запуска АЦП нужно вызвать функцию \myfunc{adc\_start()}.
+
+\begin{lstlisting}[caption=\myarg{adc\_stop()} - останов АЦП, label=adcstopfunc ]
+    #include    <zigzag.h>
+    result_t    adc_stop( bool_t force );
+\end{lstlisting}
+
+{\bfseries Аргументы функции \myfunc{adc\_stop()}:}
+{\itshape
+\begin{enumerate}
+\item \myarg{force} - если значение аргумента равно TRUE, то принудительно
+остановить АЦП.
+\end{enumerate}
+}
+
+{\bfseries Возвращаемые значения:}
+{\itshape
+\begin{itemize}
+\item ENOERR - возвращается в случае успешной остановки АЦП,
+\item EBUSY - если АЦП занят выборкой-преобразованием и значение аргумента 
+\myarg{force} равно FALSE.
+\end{itemize}
+}
+
+\subsection{Интерфейс ЦАП}
+
+
